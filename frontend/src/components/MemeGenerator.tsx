@@ -1,11 +1,14 @@
 import { useState, useRef } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
+import StockPhotoPicker, { resolveApiUrl } from './StockPhotoPicker.tsx';
+import type { StockPhoto } from './StockPhotoPicker.tsx';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000';
 
 export default function MemeGenerator() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [selectedStockPhoto, setSelectedStockPhoto] = useState<StockPhoto | null>(null);
   const [topText, setTopText] = useState('');
   const [bottomText, setBottomText] = useState('');
   const [memeUrl, setMemeUrl] = useState<string | null>(null);
@@ -18,20 +21,34 @@ export default function MemeGenerator() {
     if (!file) return;
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
+    setSelectedStockPhoto(null);
     setMemeUrl(null);
     setError(null);
   }
 
+  function handleStockPhotoSelect(photo: StockPhoto) {
+    setSelectedStockPhoto(photo);
+    setImageFile(null);
+    setImagePreview(resolveApiUrl(photo.url));
+    setMemeUrl(null);
+    setError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!imageFile) return;
+    if (!imageFile && !selectedStockPhoto) return;
 
     setLoading(true);
     setError(null);
     setMemeUrl(null);
 
     const formData = new FormData();
-    formData.append('image', imageFile);
+    if (imageFile) {
+      formData.append('image', imageFile);
+    } else if (selectedStockPhoto) {
+      formData.append('stock_photo_id', selectedStockPhoto.id);
+    }
     formData.append('top_text', topText);
     formData.append('bottom_text', bottomText);
 
@@ -47,7 +64,7 @@ export default function MemeGenerator() {
       }
 
       const data = await res.json();
-      setMemeUrl(data.url);
+      setMemeUrl(resolveApiUrl(data.url));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message === 'Failed to fetch'
@@ -62,6 +79,7 @@ export default function MemeGenerator() {
   function handleReset() {
     setImageFile(null);
     setImagePreview(null);
+    setSelectedStockPhoto(null);
     setTopText('');
     setBottomText('');
     setMemeUrl(null);
@@ -80,14 +98,21 @@ export default function MemeGenerator() {
         <section className="panel form-panel">
           <form onSubmit={handleSubmit}>
             <div className="field">
-              <label htmlFor="image-upload">Image</label>
+              <label htmlFor="image-upload">Upload an image</label>
               <input
                 id="image-upload"
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
                 onChange={handleImageChange}
-                required
+              />
+            </div>
+
+            <div className="field">
+              <label>Or pick a stock photo</label>
+              <StockPhotoPicker
+                selectedId={selectedStockPhoto?.id ?? null}
+                onSelect={handleStockPhotoSelect}
               />
             </div>
 
@@ -116,10 +141,10 @@ export default function MemeGenerator() {
             </div>
 
             <div className="actions">
-              <button type="submit" className="btn-primary" disabled={!imageFile || loading}>
+              <button type="submit" className="btn-primary" disabled={(!imageFile && !selectedStockPhoto) || loading}>
                 {loading ? 'Generating…' : 'Generate Meme'}
               </button>
-              {(imageFile || memeUrl) && (
+              {(imageFile || selectedStockPhoto || memeUrl) && (
                 <button type="button" className="btn-secondary" onClick={handleReset}>
                   Reset
                 </button>

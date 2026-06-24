@@ -16,9 +16,12 @@ app.add_middleware(
 )
 
 GENERATED_DIR = "generated"
+STOCK_PHOTOS_DIR = "stock_photos"
 os.makedirs(GENERATED_DIR, exist_ok=True)
+os.makedirs(STOCK_PHOTOS_DIR, exist_ok=True)
 
 app.mount("/generated", StaticFiles(directory=GENERATED_DIR), name="generated")
+app.mount("/stock-photo-assets", StaticFiles(directory=STOCK_PHOTOS_DIR), name="stock_photo_assets")
 
 FONT_PATHS = [
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
@@ -42,18 +45,45 @@ def draw_outlined_text(draw: ImageDraw.Draw, x: int, y: int, text: str, font, an
     draw.text((x, y), text, font=font, fill="white", anchor=anchor)
 
 
+@app.get("/stock-photo-assets")
+def list_stock_photos():
+    photos = []
+    for filename in sorted(os.listdir(STOCK_PHOTOS_DIR)):
+        if filename.lower().endswith((".jpg", ".jpeg", ".png")):
+            photo_id = os.path.splitext(filename)[0]
+            photos.append({"id": photo_id, "url": f"/stock-photo-assets/{filename}"})
+    return photos
+
+
+def resolve_stock_photo_path(stock_photo_id: str) -> str:
+    for filename in os.listdir(STOCK_PHOTOS_DIR):
+        if os.path.splitext(filename)[0] == stock_photo_id:
+            return os.path.join(STOCK_PHOTOS_DIR, filename)
+    raise HTTPException(status_code=404, detail=f"Unknown stock photo id: {stock_photo_id}")
+
+
 @app.post("/generate")
 async def generate_meme(
-    image: UploadFile = File(...),
+    image: UploadFile | None = File(None),
+    stock_photo_id: str | None = Form(None),
     top_text: str = Form(""),
     bottom_text: str = Form(""),
 ):
-    contents = await image.read()
+    if image is not None and stock_photo_id:
+        raise HTTPException(status_code=400, detail="Provide either an uploaded image or a stock_photo_id, not both.")
+    if image is not None:
+        contents = await image.read()
+    elif stock_photo_id:
+        with open(resolve_stock_photo_path(stock_photo_id), "rb") as f:
+            contents = f.read()
+    else:
+        raise HTTPException(status_code=400, detail="Provide either an uploaded image or a stock_photo_id.")
 
     try:
         img = Image.open(io.BytesIO(contents)).convert("RGB")
     except UnidentifiedImageError:
-        raise HTTPException(status_code=400, detail=f"Unsupported image format: {image.content_type}")
+        content_type = image.content_type if image is not None else "unknown"
+        raise HTTPException(status_code=400, detail=f"Unsupported image format: {content_type}")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not read image: {e}")
 

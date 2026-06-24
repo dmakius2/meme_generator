@@ -1,4 +1,4 @@
-#!/opt/homebrew/opt/python@3.11/bin/python3.11
+#!/Users/danielmakover/Desktop/github_projects/meme-generator/backend/.venv/bin/python3.11
 # -*- coding: utf-8 -*-
 import re
 import sys
