@@ -3,10 +3,13 @@ import os
 import uuid
 
 import boto3
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 from mangum import Mangum
+
+import db
+from auth import get_current_user_id
 
 app = FastAPI()
 
@@ -73,6 +76,7 @@ async def generate_meme(
     stock_photo_id: str | None = Form(None),
     top_text: str = Form(""),
     bottom_text: str = Form(""),
+    user_id: str = Depends(get_current_user_id),
 ):
     if image is not None and stock_photo_id:
         raise HTTPException(status_code=400, detail="Provide either an uploaded image or a stock_photo_id, not both.")
@@ -113,7 +117,21 @@ async def generate_meme(
 
     region = s3.meta.region_name
     url = f"https://{BUCKET_NAME}.s3.{region}.amazonaws.com/{filename}"
+    db.put_meme(user_id, url, top_text, bottom_text)
     return {"url": url}
+
+
+@app.get("/memes")
+def list_memes(user_id: str = Depends(get_current_user_id)):
+    return db.list_memes_for_user(user_id)
+
+
+@app.delete("/memes/{meme_id}")
+def delete_meme(meme_id: str, user_id: str = Depends(get_current_user_id)):
+    deleted = db.delete_meme(user_id, meme_id)
+    key = deleted["image_url"].rsplit("/", 1)[-1]
+    s3.delete_object(Bucket=BUCKET_NAME, Key=key)
+    return {"status": "deleted"}
 
 
 handler = Mangum(app)

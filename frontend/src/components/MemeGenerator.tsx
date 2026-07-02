@@ -2,10 +2,11 @@ import { useState, useRef } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import StockPhotoPicker, { resolveApiUrl } from './StockPhotoPicker.tsx';
 import type { StockPhoto } from './StockPhotoPicker.tsx';
-
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000';
+import { useAuth } from '../auth/AuthContext.tsx';
+import { authFetch } from '../lib/api.ts';
 
 export default function MemeGenerator() {
+  const { idToken } = useAuth();
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedStockPhoto, setSelectedStockPhoto] = useState<StockPhoto | null>(null);
@@ -52,8 +53,14 @@ export default function MemeGenerator() {
     formData.append('top_text', topText);
     formData.append('bottom_text', bottomText);
 
+    if (!idToken) {
+      setError('You must be logged in to generate a meme.');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const res = await fetch(`${API_BASE}/generate`, {
+      const res = await authFetch('/generate', idToken, {
         method: 'POST',
         body: formData,
       });

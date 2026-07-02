@@ -241,3 +241,88 @@ body {
   font-size: 0.95rem;
   min-height: 260px;
 }
+
+/* Nav bar */
+
+.nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1rem 1rem 0;
+}
+
+.nav-brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: #1a1a1a;
+  text-decoration: none;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.nav-links a {
+  color: #4f46e5;
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.nav-links a:hover {
+  text-decoration: underline;
+}
+
+/* Auth forms */
+
+.layout-single {
+  display: flex;
+  justify-content: center;
+}
+
+.layout-single .form-panel {
+  width: 100%;
+  max-width: 380px;
+}
+
+.auth-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  font-size: 0.85rem;
+}
+
+.auth-links a {
+  color: #4f46e5;
+}
+
+/* My Memes */
+
+.my-memes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1.25rem;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.my-meme-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.my-meme-date {
+  font-size: 0.8rem;
+  color: #666;
+}
