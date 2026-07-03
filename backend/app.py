@@ -24,11 +24,15 @@ app.add_middleware(
 
 GENERATED_DIR = "generated"
 STOCK_PHOTOS_DIR = "stock_photos"
+CAROUSEL_PHOTOS_DIR = "carousel_photos"
+
 os.makedirs(GENERATED_DIR, exist_ok=True)
 os.makedirs(STOCK_PHOTOS_DIR, exist_ok=True)
 
 app.mount("/generated", StaticFiles(directory=GENERATED_DIR), name="generated")
 app.mount("/stock-photo-assets", StaticFiles(directory=STOCK_PHOTOS_DIR), name="stock_photo_assets")
+app.mount("/carousel-photo-assets", StaticFiles(directory=CAROUSEL_PHOTOS_DIR), name="carousel_photo_assets")
+
 
 FONT_PATHS = [
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
@@ -60,6 +64,19 @@ def list_stock_photos():
             photo_id = os.path.splitext(filename)[0]
             photos.append({"id": photo_id, "url": f"/stock-photo-assets/{filename}"})
     return photos
+
+@app.get("/carousel-photo-assets")
+def list_carousel_photos():
+    print("GOING TO: /carousel-photo-assets")
+    photos = []
+    for filename in sorted(os.listdir(CAROUSEL_PHOTOS_DIR)):
+        if filename.lower().endswith((".jpg", ".jpeg", ".png")):
+            photo_id = os.path.splitext(filename)[0]
+            photos.append({"id": photo_id, "url": f"/carousel-photo-assets/{filename}"})
+    for p in photos:
+        print(p)
+    return photos
+
 
 
 def resolve_stock_photo_path(stock_photo_id: str) -> str:
