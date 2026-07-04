@@ -64,14 +64,23 @@ export default function MyMemes() {
             <div key={meme.meme_id} className="my-meme-card">
               <img src={resolveApiUrl(meme.image_url)} alt="Meme" className="meme-img" />
               <p className="my-meme-date">{new Date(meme.created_at * 1000).toLocaleString()}</p>
-              <button
-                type="button"
-                className="btn-secondary"
-                disabled={deletingId === meme.meme_id}
-                onClick={() => handleDelete(meme.meme_id)}
-              >
-                {deletingId === meme.meme_id ? 'Deleting…' : 'Delete'}
-              </button>
+              <div className="my-meme-actions">
+                <a
+                  href={resolveApiUrl(meme.image_url)}
+                  download="meme.jpg"
+                  className="download-link"
+                >
+                  Download
+                </a>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={deletingId === meme.meme_id}
+                  onClick={() => handleDelete(meme.meme_id)}
+                >
+                  {deletingId === meme.meme_id ? 'Deleting…' : 'Delete'}
+                </button>
+              </div>
             </div>
           ))}
         </div>

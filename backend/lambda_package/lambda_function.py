@@ -3,10 +3,13 @@ import os
 import uuid
 
 import boto3
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 from mangum import Mangum
+
+import db
+from auth import get_current_user_id
 
 app = FastAPI()
 
@@ -19,6 +22,7 @@ app.add_middleware(
 
 BUCKET_NAME = os.environ["GENERATED_BUCKET"]
 STOCK_PHOTOS_PREFIX = os.environ.get("STOCK_PHOTOS_PREFIX", "stock/")
+CAROUSEL_PHOTOS_PREFIX = os.environ.get("CAROUSEL_PHOTOS_PREFIX", "carousel/")
 s3 = boto3.client("s3")
 
 FONT_PATHS = [
@@ -43,6 +47,25 @@ def draw_outlined_text(draw: ImageDraw.Draw, x: int, y: int, text: str, font, an
 def _list_stock_objects():
     response = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=STOCK_PHOTOS_PREFIX)
     return [obj for obj in response.get("Contents", []) if obj["Key"] != STOCK_PHOTOS_PREFIX]
+
+
+@app.get("/carousel-photo-assets")
+def list_carousel_photos():
+    region = s3.meta.region_name
+    photos = []
+    response = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=CAROUSEL_PHOTOS_PREFIX)
+    for obj in response.get("Contents", []):
+        if obj["Key"] == CAROUSEL_PHOTOS_PREFIX:
+            continue
+        filename = obj["Key"][len(CAROUSEL_PHOTOS_PREFIX):]
+        if not filename:
+            continue
+        photo_id = os.path.splitext(filename)[0]
+        photos.append({
+            "id": photo_id,
+            "url": f"https://{BUCKET_NAME}.s3.{region}.amazonaws.com/{obj['Key']}",
+        })
+    return photos
 
 
 @app.get("/stock-photo-assets")
@@ -73,19 +96,25 @@ async def generate_meme(
     stock_photo_id: str | None = Form(None),
     top_text: str = Form(""),
     bottom_text: str = Form(""),
+    user_id: str = Depends(get_current_user_id),
 ):
+    print(f"[generate] START user_id={user_id} stock_photo_id={stock_photo_id} image={image and image.filename}")
+
     if image is not None and stock_photo_id:
         raise HTTPException(status_code=400, detail="Provide either an uploaded image or a stock_photo_id, not both.")
     if image is not None:
         contents = await image.read()
+        print(f"[generate] uploaded image read, bytes={len(contents)}")
     elif stock_photo_id:
         key = resolve_stock_photo_key(stock_photo_id)
         contents = s3.get_object(Bucket=BUCKET_NAME, Key=key)["Body"].read()
+        print(f"[generate] stock photo fetched key={key} bytes={len(contents)}")
     else:
         raise HTTPException(status_code=400, detail="Provide either an uploaded image or a stock_photo_id.")
 
     try:
         img = Image.open(io.BytesIO(contents)).convert("RGB")
+        print(f"[generate] image opened size={img.size}")
     except UnidentifiedImageError:
         content_type = image.content_type if image is not None else "unknown"
         raise HTTPException(status_code=400, detail=f"Unsupported image format: {content_type}")
@@ -107,13 +136,31 @@ async def generate_meme(
     buffer = io.BytesIO()
     img.save(buffer, "JPEG", quality=90)
     buffer.seek(0)
+    print("[generate] image rendered, uploading to S3")
 
     filename = f"{uuid.uuid4().hex}.jpg"
     s3.put_object(Bucket=BUCKET_NAME, Key=filename, Body=buffer.getvalue(), ContentType="image/jpeg")
+    print(f"[generate] S3 upload done filename={filename}")
 
     region = s3.meta.region_name
     url = f"https://{BUCKET_NAME}.s3.{region}.amazonaws.com/{filename}"
+    print(f"[generate] calling db.put_meme user_id={user_id}")
+    db.put_meme(user_id, url, top_text, bottom_text)
+    print("[generate] db.put_meme done, returning url")
     return {"url": url}
+
+
+@app.get("/memes")
+def list_memes(user_id: str = Depends(get_current_user_id)):
+    return db.list_memes_for_user(user_id)
+
+
+@app.delete("/memes/{meme_id}")
+def delete_meme(meme_id: str, user_id: str = Depends(get_current_user_id)):
+    deleted = db.delete_meme(user_id, meme_id)
+    key = deleted["image_url"].rsplit("/", 1)[-1]
+    s3.delete_object(Bucket=BUCKET_NAME, Key=key)
+    return {"status": "deleted"}
 
 
 handler = Mangum(app)

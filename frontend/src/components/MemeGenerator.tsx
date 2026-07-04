@@ -59,21 +59,31 @@ export default function MemeGenerator() {
       return;
     }
 
+    console.log('[generate] idToken present:', !!idToken);
+    console.log('[generate] idToken prefix:', idToken.slice(0, 30) + '...');
+    console.log('[generate] imageFile:', imageFile?.name ?? null);
+    console.log('[generate] selectedStockPhoto:', selectedStockPhoto?.id ?? null);
+
     try {
+      console.log('[generate] calling authFetch -> POST /generate');
       const res = await authFetch('/generate', idToken, {
         method: 'POST',
         body: formData,
       });
+      console.log('[generate] response status:', res.status, res.ok);
 
       if (!res.ok) {
         const detail = await res.text();
+        console.log('[generate] error body:', detail);
         throw new Error(detail || 'Server error');
       }
 
       const data = await res.json();
+      console.log('[generate] success, url:', data.url);
       setMemeUrl(resolveApiUrl(data.url));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      console.log('[generate] caught error:', message);
       setError(message === 'Failed to fetch'
         ? 'Could not reach the backend. Is it running on port 8000?'
         : message
