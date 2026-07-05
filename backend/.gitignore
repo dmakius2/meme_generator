@@ -4,3 +4,4 @@ generated/*
 __pycache__/
 *.pyc
 .env
+secrets.txt

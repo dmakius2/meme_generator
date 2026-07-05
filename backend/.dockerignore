@@ -1,0 +1,10 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+.env
+lambda_package/
+lambda_package.zip
+generated/*
+!generated/.gitkeep
+typing_extensions.py

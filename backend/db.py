@@ -23,7 +23,7 @@ def put_meme(user_id: str, image_url: str, top_text: str, bottom_text: str) -> d
     }
     _table.put_item(Item=item)
     return item
-
+ 
 
 def list_memes_for_user(user_id: str) -> list[dict]:
     response = _table.query(KeyConditionExpression=Key("user_id").eq(user_id))

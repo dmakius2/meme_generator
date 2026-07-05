@@ -125,9 +125,9 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/apps" element={<HomePage />} />
+          <Route path="/memeapp" element={<HomePage />} />
           <Route path="/my-memes" element={<ProtectedRoute><MyMemes /></ProtectedRoute>} />
-          <Route path="*" element={<Navigate to="/apps" replace />} />
+          <Route path="*" element={<Navigate to="/memeapp" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
