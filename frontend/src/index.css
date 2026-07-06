@@ -366,6 +366,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-top: 0;
   padding: 0.5rem;
   font-size: 0.85rem;
   font-weight: 600;
