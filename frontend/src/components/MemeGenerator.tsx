@@ -3,7 +3,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 import StockPhotoPicker, { resolveApiUrl } from './StockPhotoPicker.tsx';
 import type { StockPhoto } from './StockPhotoPicker.tsx';
 import { useAuth } from '../auth/AuthContext.tsx';
-import { authFetch } from '../lib/api.ts';
+import { authFetch, downloadFile } from '../lib/api.ts';
 
 export default function MemeGenerator() {
   const { idToken } = useAuth();
@@ -25,6 +25,15 @@ export default function MemeGenerator() {
     setSelectedStockPhoto(null);
     setMemeUrl(null);
     setError(null);
+  }
+
+  async function handleDownload() {
+    if (!memeUrl) return;
+    try {
+      await downloadFile(memeUrl, 'meme.jpg');
+    } catch {
+      setError('Failed to download meme');
+    }
   }
 
   function handleStockPhotoSelect(photo: StockPhoto) {
@@ -177,9 +186,9 @@ export default function MemeGenerator() {
             <>
               <p className="preview-label">Generated Meme</p>
               <img src={memeUrl} alt="Generated meme" className="meme-img" />
-              <a href={memeUrl} download="meme.jpg" className="download-link">
+              <button type="button" onClick={handleDownload} className="download-link">
                 Download
-              </a>
+              </button>
             </>
           ) : imagePreview ? (
             <>

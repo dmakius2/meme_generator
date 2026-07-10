@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../auth/AuthContext.tsx';
-import { authFetch } from '../lib/api.ts';
+import { authFetch, downloadFile } from '../lib/api.ts';
 import { resolveApiUrl } from './StockPhotoPicker.tsx';
 
 interface Meme {
@@ -29,6 +29,14 @@ export default function MyMemes() {
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
   }, [idToken]);
+
+  async function handleDownload(imageUrl: string) {
+    try {
+      await downloadFile(resolveApiUrl(imageUrl), 'meme.jpg');
+    } catch {
+      setError('Failed to download meme');
+    }
+  }
 
   async function handleDelete(memeId: string) {
     if (!idToken) return;
@@ -65,13 +73,13 @@ export default function MyMemes() {
               <img src={resolveApiUrl(meme.image_url)} alt="Meme" className="meme-img" />
               <p className="my-meme-date">{new Date(meme.created_at * 1000).toLocaleString()}</p>
               <div className="my-meme-actions">
-                <a
-                  href={resolveApiUrl(meme.image_url)}
-                  download="meme.jpg"
+                <button
+                  type="button"
                   className="download-link"
+                  onClick={() => handleDownload(meme.image_url)}
                 >
                   Download
-                </a>
+                </button>
                 <button
                   type="button"
                   className="btn-secondary"
