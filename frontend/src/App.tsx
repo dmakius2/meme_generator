@@ -14,6 +14,7 @@ const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000';
 
 function Carousel() {
   const [photos, setPhotos] = useState<StockPhoto[]>([]);
+  const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -21,7 +22,8 @@ function Carousel() {
     fetch(`${API_BASE}/carousel-photo-assets`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data: StockPhoto[]) => setPhotos(data))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -42,31 +44,37 @@ function Carousel() {
     }, 5000);
   }
 
-  if (photos.length === 0) return null;
+  if (!loading && photos.length === 0) return null;
 
   return (
     <div className="carousel-wrap">
       <div className="carousel-container">
-        {photos.map((photo, i) => (
-          <img
-            key={photo.id}
-            src={resolveApiUrl(photo.url)}
-            alt={photo.id}
-            className={`carousel-img${i === currentIndex ? ' active' : ''}`}
-          />
-        ))}
+        {loading ? (
+          <div className="carousel-spinner" aria-label="Loading photos" />
+        ) : (
+          photos.map((photo, i) => (
+            <img
+              key={photo.id}
+              src={resolveApiUrl(photo.url)}
+              alt={photo.id}
+              className={`carousel-img${i === currentIndex ? ' active' : ''}`}
+            />
+          ))
+        )}
       </div>
-      <div className="carousel-dots">
-        {photos.map((photo, i) => (
-          <button
-            key={photo.id}
-            type="button"
-            className={`carousel-dot${i === currentIndex ? ' active' : ''}`}
-            onClick={() => goTo(i)}
-            aria-label={`Show photo ${i + 1}`}
-          />
-        ))}
-      </div>
+      {!loading && (
+        <div className="carousel-dots">
+          {photos.map((photo, i) => (
+            <button
+              key={photo.id}
+              type="button"
+              className={`carousel-dot${i === currentIndex ? ' active' : ''}`}
+              onClick={() => goTo(i)}
+              aria-label={`Show photo ${i + 1}`}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

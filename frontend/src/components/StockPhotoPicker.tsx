@@ -14,10 +14,11 @@ export function resolveApiUrl(url: string): string {
 interface StockPhotoPickerProps {
   selectedId: string | null;
   onSelect: (photo: StockPhoto) => void;
-}
+} 
 
 export default function StockPhotoPicker({ selectedId, onSelect }: StockPhotoPickerProps) {
   const [photos, setPhotos] = useState<StockPhoto[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,6 +34,9 @@ export default function StockPhotoPicker({ selectedId, onSelect }: StockPhotoPic
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
 
     return () => {
@@ -41,6 +45,7 @@ export default function StockPhotoPicker({ selectedId, onSelect }: StockPhotoPic
   }, []);
 
   if (error) return <p className="stock-photos-error">{error}</p>;
+  if (loading) return <div className="stock-photos-loading"><div className="stock-photos-spinner" aria-label="Loading stock photos" /></div>;
   if (photos.length === 0) return null;
 
   return (
