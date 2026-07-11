@@ -10,6 +10,7 @@ A full-stack meme creation app with user accounts, a built-in stock photo librar
 - **Per-user meme history** — every meme you create is saved to your account in DynamoDB
 - **Delete memes** — remove any past meme from your history (also deletes the image from S3)
 - **Download memes** — save generated memes from both the generator and the My Memes page
+- **AI caption suggestions** — get 3 funny top/bottom caption ideas for your image from Google Gemini, one click away from filling in the text fields
 
 ## Architecture
 
@@ -23,10 +24,10 @@ A full-stack meme creation app with user accounts, a built-in stock photo librar
 │  React + Vite SPA   │ ── JWT + form/JSON ────────► │  API Gateway (HTTP)   │
 │  (frontend/)        │ ◄──── response ─────────────  │  → Lambda (FastAPI)   │
 └─────────────────────┘                              └───────────────────────┘
-                                                              │         │
-                                                       S3 bucket    DynamoDB
-                                                     (images, stock,  (meme
-                                                       carousel)    records)
+                                                              │      │      │
+                                                       S3 bucket  DynamoDB  Gemini API
+                                                     (images, stock, (meme  (caption
+                                                       carousel)   records)  suggestions)
 ```
 
 - **Frontend** — a React/TypeScript SPA (Vite) with client-side routing. Public routes: landing page (`/apps`) with a carousel, login, signup, and forgot-password. Protected routes: meme generator (`/`) and meme history (`/my-memes`). Authenticates directly with Cognito from the browser; attaches the resulting JWT as a `Bearer` token on every backend API call.
@@ -40,7 +41,7 @@ A full-stack meme creation app with user accounts, a built-in stock photo librar
 
 | File | Purpose |
 |---|---|
-| `app.py` | Local FastAPI server. Defines all endpoints (see list below), loads fonts, processes images with Pillow, saves to `generated/`, and serves static dirs at `/generated`, `/stock-photo-assets`, and `/carousel-photo-assets`. Also loads env vars from `.env` via `python-dotenv`. |
+| `app.py` | Local FastAPI server. Defines all endpoints (see list below), loads fonts, processes images with Pillow, saves to `generated/`, and serves static dirs at `/generated`, `/stock-photo-assets`, and `/carousel-photo-assets`. Also loads env vars from `.env` via `python-dotenv`. Initializes a Gemini client (`google-genai`) from `GEMINI_API_KEY` for `/suggest-captions`. |
 | `lambda_function.py` | AWS Lambda variant. Identical endpoint logic but reads/writes all images (generated, stock, carousel) from S3 prefixes in `GENERATED_BUCKET` instead of local disk. Wrapped with Mangum. |
 | `auth.py` | FastAPI dependency used by all protected endpoints. Fetches Cognito's public JWKS, verifies the incoming `Authorization: Bearer <token>` header, and returns the user's `sub` (unique ID). |
 | `db.py` | DynamoDB helpers: `put_meme`, `list_memes_for_user`, `delete_meme`. Used by `app.py` and `lambda_function.py` to persist meme records keyed by `user_id` + `meme_id`. |
@@ -50,8 +51,8 @@ A full-stack meme creation app with user accounts, a built-in stock photo librar
 | `carousel_photos/` | Images shown in the home page carousel for local dev. Mirrored in production under the `carousel/` S3 prefix. |
 | `.env` | Local-only env vars (gitignored). Copy from `.env.example` and fill in. |
 | `.env.example` | Template for required local env vars. |
-| `requirements.txt` | Local dev dependencies (`fastapi`, `uvicorn`, `pillow`, `python-multipart`, `python-dotenv`, `boto3`, `pyjwt[crypto]`). |
-| `requirements-lambda.txt` | Lambda deployment dependencies (`fastapi`, `mangum`, `python-multipart`, `pyjwt[crypto]`; boto3/Pillow come from the Lambda runtime/layer). |
+| `requirements.txt` | Local dev dependencies (`fastapi`, `uvicorn`, `pillow`, `python-multipart`, `python-dotenv`, `boto3`, `pyjwt[crypto]`, `google-genai`). |
+| `requirements-lambda.txt` | Lambda deployment dependencies (`fastapi`, `mangum`, `python-multipart`, `pyjwt[crypto]`, `google-genai`; boto3/Pillow come from the Lambda runtime/layer). |
 | `lambda_package/`, `lambda_package.zip` | Vendored deps and deployment artifact for Lambda. Not needed for local dev. |
 
 ### API endpoints
@@ -61,6 +62,7 @@ A full-stack meme creation app with user accounts, a built-in stock photo librar
 | `GET` | `/stock-photo-assets` | No | List available stock photos |
 | `GET` | `/carousel-photo-assets` | No | List carousel images for the home page |
 | `POST` | `/generate` | **Yes** | Generate a meme from an uploaded image or `stock_photo_id`; saves record to DynamoDB |
+| `POST` | `/suggest-captions` | **Yes** | Get 3 AI-generated top/bottom caption suggestions for an uploaded image or `stock_photo_id`, via Gemini |
 | `GET` | `/memes` | **Yes** | List the current user's past memes from DynamoDB |
 | `DELETE` | `/memes/{meme_id}` | **Yes** | Delete a meme record from DynamoDB and its image from S3/disk |
 
@@ -72,7 +74,7 @@ A full-stack meme creation app with user accounts, a built-in stock photo librar
 | `src/App.tsx` | Root component. Sets up `AuthProvider`, `BrowserRouter`, the `NavBar`, route definitions, and the `Carousel` + `HomePage` components for the public landing page. |
 | `src/auth/AuthContext.tsx` | Cognito auth wrapper (using `amazon-cognito-identity-js`). Exposes `signUp`, `confirmSignUp`, `login`, `logout`, `forgotPassword`, `confirmForgotPassword`, and the current `idToken` to the whole app via React context. |
 | `src/auth/ProtectedRoute.tsx` | Redirects unauthenticated users to `/login` for any route that requires a session. |
-| `src/components/MemeGenerator.tsx` | The meme creation UI: image upload or stock photo selection, top/bottom text inputs, generates a meme via `POST /generate` with the user's JWT attached, displays the result with a download link. |
+| `src/components/MemeGenerator.tsx` | The meme creation UI: image upload or stock photo selection, top/bottom text inputs, generates a meme via `POST /generate` with the user's JWT attached, displays the result with a download link. Also has a "Suggest Captions (AI)" button that calls `POST /suggest-captions` and lets you click a suggestion to fill in the text fields. |
 | `src/components/StockPhotoPicker.tsx` | Fetches `GET /stock-photo-assets` and renders a clickable thumbnail grid. Also exports `resolveApiUrl` (converts relative backend paths to absolute URLs). |
 | `src/components/MyMemes.tsx` | Fetches `GET /memes` and renders the user's past memes in a grid, each with a download link and a delete button. |
 | `src/components/Login.tsx` | Login form. |
@@ -108,7 +110,10 @@ COGNITO_USER_POOL_ID=us-east-2_XXXXXXXXX
 COGNITO_CLIENT_ID=<your dev app client id>
 COGNITO_REGION=us-east-2
 MEMES_TABLE_NAME=memes-dev
+GEMINI_API_KEY=<your Google AI Studio API key>
 ```
+
+`GEMINI_API_KEY` powers the "Suggest Captions (AI)" button (`POST /suggest-captions`). Get a free key from [Google AI Studio](https://aistudio.google.com/apikey). If unset, that endpoint returns a 503 — everything else still works.
 
 ### 3. Start the backend
 
@@ -138,8 +143,8 @@ The Vite dev server starts at `http://localhost:5173/apps/`. It reads `VITE_API_
 |---|---|
 | S3 bucket (`GENERATED_BUCKET`) | Stores generated memes, stock photos (`stock/` prefix), and carousel images (`carousel/` prefix) |
 | S3 bucket (frontend) | Hosts the built React app as a static website |
-| API Gateway (HTTP API) | Routes requests to the Lambda; CORS configured at API level with `Authorization` in allowed headers |
-| Lambda function | Runs `lambda_function.py` via Mangum |
+| API Gateway (HTTP API) | Routes requests to the Lambda; CORS configured at API level with `Authorization` in allowed headers. Uses **explicit per-path routes** — every new FastAPI endpoint needs a matching route created manually. |
+| Lambda function | Runs `lambda_function.py` via Mangum. Timeout must be raised well above the 3s default (30s recommended) — the Gemini call in `/suggest-captions` won't finish in time otherwise. |
 | Lambda execution role | Needs `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`, `s3:ListBucket` on `GENERATED_BUCKET`; and `dynamodb:PutItem`, `dynamodb:Query`, `dynamodb:DeleteItem`, `dynamodb:GetItem` on the memes table |
 | Cognito User Pool + App Client | Handles signup, login, logout, and password reset (public/SPA client, no secret) |
 | DynamoDB table | `memes-prod` — partition key `user_id` (String), sort key `meme_id` (String), on-demand capacity |
@@ -153,6 +158,7 @@ The Vite dev server starts at `http://localhost:5173/apps/`. It reads `VITE_API_
 | `COGNITO_CLIENT_ID` | Prod Cognito App Client ID |
 | `COGNITO_REGION` | `us-east-2` |
 | `MEMES_TABLE_NAME` | `memes-prod` |
+| `GEMINI_API_KEY` | Google AI Studio API key, powers `/suggest-captions` |
 
 ### Deployment steps (manual)
 
