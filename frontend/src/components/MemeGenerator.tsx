@@ -15,6 +15,8 @@ export default function MemeGenerator() {
   const [memeUrl, setMemeUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [captionSuggestions, setCaptionSuggestions] = useState<{ top_text: string; bottom_text: string }[]>([]);
+  const [suggestLoading, setSuggestLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleImageChange(e: ChangeEvent<HTMLInputElement>) {
@@ -25,6 +27,7 @@ export default function MemeGenerator() {
     setSelectedStockPhoto(null);
     setMemeUrl(null);
     setError(null);
+    setCaptionSuggestions([]);
   }
 
   async function handleDownload() {
@@ -42,7 +45,53 @@ export default function MemeGenerator() {
     setImagePreview(resolveApiUrl(photo.url));
     setMemeUrl(null);
     setError(null);
+    setCaptionSuggestions([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  async function handleSuggestCaptions() {
+    if (!imageFile && !selectedStockPhoto) return;
+    if (!idToken) {
+      setError('You must be logged in to suggest captions.');
+      return;
+    }
+
+    setSuggestLoading(true);
+    setError(null);
+    setCaptionSuggestions([]);
+
+    const formData = new FormData();
+    if (imageFile) {
+      formData.append('image', imageFile);
+    } else if (selectedStockPhoto) {
+      formData.append('stock_photo_id', selectedStockPhoto.id);
+    }
+
+    try {
+      const res = await authFetch('/suggest-captions', idToken, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) {
+        const detail = await res.text();
+        throw new Error(detail || 'Server error');
+      }
+      const data = await res.json();
+      setCaptionSuggestions(data.suggestions ?? []);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message === 'Failed to fetch'
+        ? 'Could not reach the backend. Is it running on port 8000?'
+        : message
+      );
+    } finally {
+      setSuggestLoading(false);
+    }
+  }
+
+  function applyCaptionSuggestion(suggestion: { top_text: string; bottom_text: string }) {
+    setTopText(suggestion.top_text ?? '');
+    setBottomText(suggestion.bottom_text ?? '');
   }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -110,6 +159,7 @@ export default function MemeGenerator() {
     setBottomText('');
     setMemeUrl(null);
     setError(null);
+    setCaptionSuggestions([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -140,6 +190,28 @@ export default function MemeGenerator() {
                 selectedId={selectedStockPhoto?.id ?? null}
                 onSelect={handleStockPhotoSelect}
               />
+            </div>
+
+            <div className="field">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleSuggestCaptions}
+                disabled={(!imageFile && !selectedStockPhoto) || suggestLoading}
+              >
+                {suggestLoading ? 'Thinking…' : 'Suggest Captions (AI)'}
+              </button>
+              {captionSuggestions.length > 0 && (
+                <ul className="caption-suggestions">
+                  {captionSuggestions.map((s, i) => (
+                    <li key={i}>
+                      <button type="button" onClick={() => applyCaptionSuggestion(s)}>
+                        {s.top_text || '—'} / {s.bottom_text || '—'}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             <div className="field">

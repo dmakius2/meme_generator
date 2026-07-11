@@ -1,4 +1,6 @@
 import io
+import json
+import mimetypes
 import os
 import uuid
 
@@ -6,12 +8,16 @@ import boto3
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
+from google import genai
+from google.genai import types
 from mangum import Mangum
 
 import db
 from auth import get_current_user_id
 
 app = FastAPI()
+
+gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"]) if os.environ.get("GEMINI_API_KEY") else None
 
 app.add_middleware(
     CORSMiddleware,
@@ -148,6 +154,55 @@ async def generate_meme(
     db.put_meme(user_id, url, top_text, bottom_text)
     print("[generate] db.put_meme done, returning url")
     return {"url": url}
+
+
+CAPTION_PROMPT = (
+    "You are a meme caption writer. Look at this image and suggest 3 funny, punchy meme "
+    "captions for it. Each suggestion has a short top_text and bottom_text (either may be "
+    "empty, but not both). Keep each line under 8 words. "
+    'Respond with ONLY a JSON array like: [{"top_text": "...", "bottom_text": "..."}]'
+)
+
+
+@app.post("/suggest-captions")
+async def suggest_captions(
+    image: UploadFile | None = File(None),
+    stock_photo_id: str | None = Form(None),
+    user_id: str = Depends(get_current_user_id),
+):
+    if gemini_client is None:
+        raise HTTPException(status_code=503, detail="Gemini API key not configured on the server.")
+    if image is not None and stock_photo_id:
+        raise HTTPException(status_code=400, detail="Provide either an uploaded image or a stock_photo_id, not both.")
+
+    if image is not None:
+        contents = await image.read()
+        mime_type = image.content_type or "image/jpeg"
+    elif stock_photo_id:
+        key = resolve_stock_photo_key(stock_photo_id)
+        contents = s3.get_object(Bucket=BUCKET_NAME, Key=key)["Body"].read()
+        mime_type = mimetypes.guess_type(key)[0] or "image/jpeg"
+    else:
+        raise HTTPException(status_code=400, detail="Provide either an uploaded image or a stock_photo_id.")
+
+    try:
+        response = gemini_client.models.generate_content(
+            model="gemini-flash-latest",
+            contents=[
+                types.Part.from_bytes(data=contents, mime_type=mime_type),
+                CAPTION_PROMPT,
+            ],
+            config=types.GenerateContentConfig(response_mime_type="application/json"),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Gemini request failed: {e}")
+
+    try:
+        suggestions = json.loads(response.text)
+    except (json.JSONDecodeError, TypeError):
+        raise HTTPException(status_code=502, detail="Gemini returned an unparseable response.")
+
+    return {"suggestions": suggestions}
 
 
 @app.get("/memes")
